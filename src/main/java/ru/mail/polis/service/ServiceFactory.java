@@ -19,6 +19,7 @@ package ru.mail.polis.service;
 import ru.mail.polis.lsm.DAO;
 
 import java.io.IOException;
+import java.util.Objects;
 
 /**
  * Constructs {@link Service} instances.
@@ -49,6 +50,8 @@ public final class ServiceFactory {
         if (port <= 0 || 65536 <= port) {
             throw new IllegalArgumentException("Port out of range");
         }
+
+        Objects.requireNonNull(dao);
 
         throw new UnsupportedOperationException("Implement me!");
     }

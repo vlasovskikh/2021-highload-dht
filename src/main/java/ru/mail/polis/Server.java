@@ -16,6 +16,8 @@
 
 package ru.mail.polis;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import ru.mail.polis.lsm.DAO;
 import ru.mail.polis.lsm.DAOConfig;
 import ru.mail.polis.lsm.DAOFactory;
@@ -33,6 +35,8 @@ import java.nio.file.Path;
 public final class Server {
     private static final int PORT = 8080;
 
+    private static final Logger log = LoggerFactory.getLogger(Server.class);
+
     private Server() {
         // Not instantiable
     }
@@ -49,7 +53,7 @@ public final class Server {
         } else {
             data = Files.createTempDirectory();
         }
-        System.out.println("Storing data at " + data);
+        log.info("Storing data at {}", data);
 
         // Start the storage
         try (DAO dao = DAOFactory.create(new DAOConfig(data))) {
