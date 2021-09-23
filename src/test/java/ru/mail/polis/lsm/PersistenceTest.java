@@ -169,7 +169,7 @@ class PersistenceTest {
         byte[] suffix = sizeBasedRandomData(size);
         int recordsCount = (int) (TestDaoWrapper.MAX_HEAP * 15 / size);
 
-        prepareHugeDao(data, size, suffix);
+        prepareHugeDao(data, recordsCount, suffix);
 
         // Check
         try (DAO dao = TestDaoWrapper.create(new DAOConfig(data))) {
@@ -207,7 +207,7 @@ class PersistenceTest {
         int beforeCompactSize = getDirSize(data);
 
         try (DAO dao = TestDaoWrapper.create(new DAOConfig(data))) {
-            dao.compact();
+            dao.closeAndCompact();
             assertDaoEquals(dao, map);
         }
 

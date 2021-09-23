@@ -63,7 +63,7 @@ class SingleNodeTest extends TestBase {
         client.close();
         storage.stop();
         dao.close();
-        FileUtils.recursiveDelete(daoConfig.getDir());
+        FileUtils.recursiveDelete(daoConfig.dir);
     }
 
     private static void reset() {
@@ -236,8 +236,8 @@ class SingleNodeTest extends TestBase {
             // Remove data and recreate
             storage.stop();
             dao.close();
-            FileUtils.recursiveDelete(daoConfig.getDir());
-            java.nio.file.Files.createDirectory(daoConfig.getDir());
+            FileUtils.recursiveDelete(daoConfig.dir);
+            java.nio.file.Files.createDirectory(daoConfig.dir);
             dao = DAOFactory.create(daoConfig);
             port = randomPort();
             storage = ServiceFactory.create(port, dao);

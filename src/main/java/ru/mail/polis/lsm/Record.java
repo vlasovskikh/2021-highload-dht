@@ -34,4 +34,12 @@ public class Record {
         return value == null;
     }
 
+    public int getKeySize() {
+        return key.remaining();
+    }
+
+    public int getValueSize() {
+        return value == null ? 0 : value.remaining();
+    }
+
 }
