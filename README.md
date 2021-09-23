@@ -1,7 +1,7 @@
 # 2021-highload-dht
 Курсовой проект 2021 года [курса](https://polis.mail.ru/curriculum/program/discipline/1257/) "Проектирование высоконагруженных систем" в [Технополис](https://polis.mail.ru).
 
-## Этап 1. HTTP + storage (deadline TBD)
+## Этап 1. HTTP + storage (deadline 2021-09-29 23:59:59 MSK)
 ### Fork
 [Форкните проект](https://help.github.com/articles/fork-a-repo/), склонируйте и добавьте `upstream`:
 ```
