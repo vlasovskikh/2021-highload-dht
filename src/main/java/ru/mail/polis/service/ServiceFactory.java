@@ -56,6 +56,10 @@ public final class ServiceFactory {
 
         Objects.requireNonNull(dao);
 
+        if (topology.isEmpty()) {
+            throw new IllegalArgumentException("Empty cluster");
+        }
+
         throw new UnsupportedOperationException("Implement me!");
     }
 }
