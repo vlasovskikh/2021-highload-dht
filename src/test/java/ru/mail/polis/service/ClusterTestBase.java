@@ -38,6 +38,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * Facilities for cluster tests.
@@ -156,7 +157,7 @@ abstract class ClusterTestBase extends TestBase {
     }
 
     void createAndStart(final int node) throws Exception {
-        assert services[node] == null;
+        assertNull(services[node]);
         services[node] = ServiceFactory.create(ports[node], daos[node], endpoints);
         services[node].start();
 
