@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "pydht"
+version = "0.1.0"
+description = "Learning 2021-highload-dht in 2022"
+authors = ["Andrey Vlasovskikh <andrey.vlasovskikh@gmail.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+fastapi = "^0.76.0"
+uvicorn = {extras = ["standard"], version = "^0.17.6"}
+docopt = "^0.6.2"
+
+[tool.poetry.dev-dependencies]
+types-docopt = "^0.6.9"
+pyinstrument = "^4.1.1"
+pre-commit = "^2.19.0"
+mypy = "^0.950"
+
+[tool.poetry.scripts]
+pydht = "pydht:main"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -29,8 +29,10 @@ public final class DAOFactory {
      */
     public static DAO create(DAOConfig config) throws IOException {
         assert config.dir.toFile().exists();
-
-        throw new UnsupportedOperationException("Implement me");
+        try {
+            return new PyDAO(config.dir);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
-
 }

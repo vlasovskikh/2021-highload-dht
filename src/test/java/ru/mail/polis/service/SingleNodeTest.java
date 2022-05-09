@@ -115,9 +115,10 @@ class SingleNodeTest extends TestBase {
 
     @Test
     void badRequest() {
-        assertTimeoutPreemptively(TIMEOUT, () -> assertEquals(
-                400,
-                client.get("/abracadabra").getStatus()));
+        assertTimeoutPreemptively(TIMEOUT, () -> {
+            var r = client.get("/abracadabra");
+            assertEquals(400, r.getStatus());
+        });
     }
 
     @Test
