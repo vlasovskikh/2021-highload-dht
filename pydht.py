@@ -19,7 +19,7 @@ import functools
 import os
 from pathlib import Path
 import sys
-from typing import Iterator
+from typing import AsyncIterator, Iterator
 from fastapi import FastAPI, Depends, Request, status, HTTPException, Response, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -76,11 +76,15 @@ class DAO:
 
 
 @functools.lru_cache()
-def get_settings() -> Settings:
+def get_settings_sync() -> Settings:
     return Settings()  # type: ignore
 
 
-def get_dao(settings: Settings = Depends(get_settings)) -> Iterator[DAO]:
+async def get_settings() -> Settings:
+    return get_settings_sync()
+
+
+async def get_dao(settings: Settings = Depends(get_settings)) -> AsyncIterator[DAO]:
     dao = DAO(settings.db_path)
     try:
         yield dao
@@ -113,7 +117,7 @@ async def get_status() -> PlainTextResponse:
 
 
 @app.get("/v0/entity")
-def get_entity(
+async def get_entity(
     id: str = Query(..., min_length=1), dao: DAO = Depends(get_dao)
 ) -> Response:
     try:
