@@ -71,8 +71,20 @@ class DAO:
     def close(self) -> None:
         self.db.close()
 
-    def next_key(self, key: bytes) -> bytes | None:
-        return self.db.nextkey(key)
+
+global_dao: DAO | None = None
+
+
+@app.on_event("startup")
+def startup_event() -> None:
+    global global_dao
+    global_dao = DAO(get_settings_sync().db_path)
+
+
+@app.on_event("shutdown")
+def shutdown_event() -> None:
+    if global_dao:
+        global_dao.close()
 
 
 @functools.lru_cache()
@@ -84,12 +96,10 @@ async def get_settings() -> Settings:
     return get_settings_sync()
 
 
-async def get_dao(settings: Settings = Depends(get_settings)) -> AsyncIterator[DAO]:
-    dao = DAO(settings.db_path)
-    try:
-        yield dao
-    finally:
-        dao.close()
+async def get_dao() -> AsyncIterator[DAO]:
+    if not global_dao:
+        raise ValueError("DAO is not configured")
+    yield global_dao
 
 
 @app.exception_handler(status.HTTP_404_NOT_FOUND)
