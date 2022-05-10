@@ -184,6 +184,7 @@ def main() -> None:
         port=int(opts["--port"]),
         reload=opts["--reload"],
         loop="uvloop",
+        access_log=False,
     )
 
 
