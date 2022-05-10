@@ -1,4 +1,5 @@
 *.log
+/*.html
 __pycache__/
 /.idea/
 /.gradle/
