@@ -1,6 +1,8 @@
-.*
-build
 *.log
-/bin/
 __pycache__/
+/.idea/
+/.gradle/
+/.vscode/
+/bin/
+/build/
 /tmp/
