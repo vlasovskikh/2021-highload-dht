@@ -17,7 +17,8 @@ repos:
         args: []
         additional_dependencies:
           - "types-docopt==0.6.8"
-          - "fastapi==0.76.0"
+          - "aiohttp==3.8.1"
+          - "pydantic==1.9.0"
   - repo: local
     hooks:
       - id: gradle-test

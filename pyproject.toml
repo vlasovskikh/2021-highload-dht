@@ -7,9 +7,10 @@ license = "MIT"
 
 [tool.poetry.dependencies]
 python = "^3.9"
-fastapi = "^0.76.0"
-uvicorn = {extras = ["standard"], version = "^0.17.6"}
 docopt = "^0.6.2"
+aiohttp = "^3.8.1"
+pydantic = "^1.9.0"
+uvloop = "^0.16.0"
 
 [tool.poetry.dev-dependencies]
 types-docopt = "^0.6.9"

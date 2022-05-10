@@ -9,36 +9,25 @@ service with docs at http://localhost:8000/docs by default.
 
 Options:
     -p --port=PORT          Listen at the given port. [default: 8000]
-    --reload                Enabled auto-reload.
     --profile=FILE          Profile with Pyinstrument and write output to FILE.
+    --access-log            Show access log.
 """
 
 import contextlib
 import dbm.gnu as gdbm
-import functools
+import logging
 import os
 from pathlib import Path
 import sys
-from typing import AsyncIterator, Iterator
-from fastapi import FastAPI, Depends, Request, status, HTTPException, Response, Query
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, PlainTextResponse
-from pydantic import BaseSettings
-import uvicorn
+from typing import AsyncIterator, Awaitable, Callable, Iterator, TypedDict, cast
 import docopt
+from aiohttp import web
+from aiohttp.log import access_logger
+import pydantic
+import uvloop
 
 
-ENCODING = "utf-8"
-
-
-class Settings(BaseSettings):
-    db_path: Path
-
-    class Config:
-        env_prefix = "pydht_"
-
-
-app = FastAPI()
+Handler = Callable[[web.Request], Awaitable[web.StreamResponse]]
 
 
 class DAO:
@@ -72,120 +61,127 @@ class DAO:
         self.db.close()
 
 
-global_dao: DAO | None = None
+class Settings(pydantic.BaseSettings):
+    db_path: Path
+    profile_path: Path | None = None
+
+    class Config:
+        env_prefix = "pydht_"
 
 
-@app.on_event("startup")
-def startup_event() -> None:
-    global global_dao
-    global_dao = DAO(get_settings_sync().db_path)
+class AppDict(TypedDict):
+    settings: Settings
+    dao: DAO
 
 
-@app.on_event("shutdown")
-def shutdown_event() -> None:
-    if global_dao:
-        global_dao.close()
+def app_config(app: web.Application) -> AppDict:
+    return cast(AppDict, app)
 
 
-@functools.lru_cache()
-def get_settings_sync() -> Settings:
-    return Settings()  # type: ignore
+async def dao_context(app: web.Application) -> AsyncIterator:
+    config = app_config(app)
+    settings = config["settings"]
+    config["dao"] = DAO(settings.db_path)
+    yield
+    config["dao"].close()
 
 
-async def get_settings() -> Settings:
-    return get_settings_sync()
+routes = web.RouteTableDef()
 
 
-async def get_dao() -> AsyncIterator[DAO]:
-    if not global_dao:
-        raise ValueError("DAO is not configured")
-    yield global_dao
+@routes.view("/v0/status")
+class StatusView(web.View):
+    async def get(self) -> web.Response:
+        return web.Response(text="I'm OK")
 
 
-@app.exception_handler(status.HTTP_404_NOT_FOUND)
-async def not_found_handler(_: Request, exc: Exception) -> JSONResponse:
-    if isinstance(exc, HTTPException):
-        return JSONResponse(
-            content={"detail": exc.detail}, status_code=status.HTTP_404_NOT_FOUND
-        )
-    else:
-        return JSONResponse(
-            content={"detail": "Bad request"}, status_code=status.HTTP_400_BAD_REQUEST
-        )
+class EntityQuery(pydantic.BaseModel):
+    id: bytes = pydantic.Field(min_length=1)
 
 
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(
-    _: Request, exc: RequestValidationError
-) -> JSONResponse:
-    return JSONResponse(content={"detail": exc.errors()}, status_code=400)
+@routes.view("/v0/entity")
+class EntityView(web.View):
+    async def get(self) -> web.Response:
+        try:
+            _, value = next(self.dao.range(self.get_query().id, None))
+        except StopIteration:
+            raise not_found()
+        return web.Response(body=value)
+
+    async def put(self) -> web.Response:
+        body = await self.request.read()
+        self.dao.upsert(self.get_query().id, body)
+        return web.Response(status=201, text="Created")
+
+    async def delete(self) -> web.Response:
+        self.dao.upsert(self.get_query().id, None)
+        return web.Response(status=202, text="Accepeted")
+
+    @property
+    def dao(self) -> DAO:
+        return app_config(self.request.app)["dao"]
+
+    def get_query(self) -> EntityQuery:
+        return EntityQuery(**self.request.query)  # type: ignore
 
 
-@app.get("/v0/status")
-async def get_status() -> PlainTextResponse:
-    return PlainTextResponse(content="I'm OK")
+def not_found() -> web.HTTPNotFound:
+    e = web.HTTPNotFound(text="Not found")
+    e["preserve"] = True
+    return e
 
 
-@app.get("/v0/entity")
-async def get_entity(
-    id: str = Query(..., min_length=1), dao: DAO = Depends(get_dao)
-) -> Response:
+@web.middleware
+async def exceptions_middleware(
+    request: web.Request, handler: Handler
+) -> web.StreamResponse:
     try:
-        _, value = next(dao.range(id.encode(ENCODING), None))
-    except StopIteration:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Not found",
-            headers={"X-Preserve-Status": True},
-        )
-    else:
-        return Response(content=value)
+        return await handler(request)
+    except pydantic.ValidationError as e:
+        data = {"detail": "Validation failed", "errors": e.errors()}
+        return web.json_response(data, status=400)
+    except web.HTTPNotFound as e:
+        if e.get("preserve", False):
+            raise
+        else:
+            raise web.HTTPBadRequest()
 
 
-@app.put("/v0/entity", status_code=status.HTTP_201_CREATED)
-async def put_entity(
-    request: Request, id: str = Query(..., min_length=1), dao: DAO = Depends(get_dao)
-) -> None:
-    body = await request.body()
-    dao.upsert(id.encode(ENCODING), body)
+async def pyinstrument_context(app: web.Application) -> AsyncIterator:
+    config = app_config(app)["settings"]
+    path = config.profile_path
+    if not path:
+        raise ValueError("Profile path is not set")
 
-
-@app.delete("/v0/entity", status_code=status.HTTP_202_ACCEPTED)
-async def delete_entity(
-    id: str = Query(..., min_length=1), dao: DAO = Depends(get_dao)
-) -> None:
-    dao.upsert(id.encode(ENCODING), None)
-
-
-def patch_uvicorn(path: str) -> None:
     import pyinstrument
-    from uvicorn.server import Server
 
-    original_serve = Server.serve
-
-    async def patched_serve(*args, **kwargs):
-        with pyinstrument.Profiler() as p:
-            res = await original_serve(*args, **kwargs)
-        with open(path, "w") as fd:
-            fd.write(p.output_html())
-        return res
-
-    Server.serve = patched_serve
+    with pyinstrument.Profiler() as p:
+        yield
+    with open(path, "w") as fd:
+        fd.write(p.output_html())
 
 
 def main() -> None:
     opts = docopt.docopt(__doc__ or "", argv=sys.argv[1:])
     os.environ["PYDHT_DB_PATH"] = opts["PATH"]
-    profile_file = opts["--profile"]
-    if profile_file:
-        patch_uvicorn(profile_file)
-    uvicorn.run(
-        "pydht:app",
-        port=int(opts["--port"]),
-        reload=opts["--reload"],
-        loop="uvloop",
-        access_log=False,
-    )
+    profile_path = opts["--profile"]
+    if profile_path:
+        os.environ["PYDHT_PROFILE_PATH"] = profile_path
+    app = web.Application()
+    app["settings"] = Settings()  # type: ignore
+    app.router.add_routes(routes)
+    if profile_path:
+        app.cleanup_ctx.append(pyinstrument_context)
+    app.cleanup_ctx.append(dao_context)
+    app.middlewares.append(exceptions_middleware)
+    if opts["--access-log"]:
+        logging.basicConfig(level=logging.INFO)
+        access_logger.level = logging.INFO
+        logger = access_logger
+    else:
+        logger = None
+    uvloop.install()
+    web.run_app(app, port=opts["--port"], access_log=logger)
 
 
 if __name__ == "__main__":
