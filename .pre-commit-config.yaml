@@ -1,0 +1,30 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: "22.3.0"
+    hooks:
+      - id: black
+  - repo: https://gitlab.com/pycqa/flake8
+    rev: "3.9.2"
+    hooks:
+      - id: flake8
+        args:
+          - "--max-line-length=88"
+          - "--ignore=E24,E121,E123,E126,E203,E226,E704,E731,W503,W504"
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: "v0.950"
+    hooks:
+      - id: mypy
+        args: []
+        additional_dependencies:
+          - "types-docopt==0.6.8"
+          - "fastapi==0.76.0"
+  - repo: local
+    hooks:
+      - id: gradle-test
+        name: gradle test
+        entry: ./gradlew cleanTest test --tests StartStopTest --tests SingleNodeTest
+        language: system
+        types_or:
+          - python
+          - java
+        pass_filenames: false
