@@ -9,18 +9,21 @@ service with docs at http://localhost:8000/docs by default.
 
 Options:
     -p --port=PORT          Listen at the given port. [default: 8000]
+    --cluster-urls=URLS     URLs of nodes in the cluster for sharding (including this
+                            node), encoded as a JSON list.
     --access-log            Show access log.
     --profile=FILE          Profile with Pyinstrument and write output to FILE when the
                             server stops.
 """
 
 import contextlib
+from dataclasses import dataclass
 import dbm.gnu as gdbm
 import logging
 import os
 from pathlib import Path
 import sys
-from typing import AsyncIterator, Awaitable, Callable, Iterator, TypedDict, cast
+from typing import AsyncIterator, Awaitable, Callable, TypedDict, cast
 import docopt
 from aiohttp import web
 from aiohttp.log import access_logger
@@ -36,9 +39,16 @@ class DAO:
         path.mkdir(parents=True, exist_ok=True)
         self.db = gdbm.open(str(path / "pydht.db"), "c")
 
-    def range(
+    async def get(self, key: bytes) -> bytes:
+        try:
+            _, value = await anext(self.range(key, None))
+        except StopAsyncIteration:
+            raise KeyError(f"Key {key!r} not found")
+        return value
+
+    async def range(
         self, from_key: bytes, to_key: bytes | None
-    ) -> Iterator[tuple[bytes, bytes]]:
+    ) -> AsyncIterator[tuple[bytes, bytes]]:
         key: bytes | None = from_key
         while key is not None and key != to_key:
             try:
@@ -47,19 +57,38 @@ class DAO:
                 return
             key = self.db.nextkey(key)
 
-    def upsert(self, key: bytes, value: bytes | None) -> None:
+    async def upsert(self, key: bytes, value: bytes | None) -> None:
         if value is not None:
             self.db[key] = value
         else:
             with contextlib.suppress(KeyError):
                 del self.db[key]
 
-    def close_and_compact(self) -> None:
+    async def close_and_compact(self) -> None:
         self.db.reorganize()
-        self.close()
+        await self.aclose()
 
-    def close(self) -> None:
+    async def aclose(self) -> None:
         self.db.close()
+
+
+@dataclass
+class ShardedDAO:
+    dao: DAO
+    port: int
+    cluster_urls: set[str]
+
+    async def get(self, key: bytes) -> bytes:
+        return await self.dao.get(key)
+
+    async def upsert(self, key: bytes, value: bytes | None) -> None:
+        await self.dao.upsert(key, value)
+
+    async def close_and_compact(self) -> None:
+        await self.dao.close_and_compact()
+
+    async def aclose(self) -> None:
+        await self.dao.aclose()
 
 
 class Settings(pydantic.BaseSettings):
@@ -67,6 +96,7 @@ class Settings(pydantic.BaseSettings):
     port: int = 8000
     profile_path: Path | None = None
     access_log: bool = False
+    cluster_urls: set[str] = set()
 
     class Config:
         env_prefix = "pydht_"
@@ -74,7 +104,7 @@ class Settings(pydantic.BaseSettings):
 
 class AppDict(TypedDict):
     settings: Settings
-    dao: DAO
+    sharded_dao: ShardedDAO
 
 
 def app_config(app: web.Application) -> AppDict:
@@ -84,9 +114,10 @@ def app_config(app: web.Application) -> AppDict:
 async def dao_context(app: web.Application) -> AsyncIterator:
     config = app_config(app)
     settings = config["settings"]
-    config["dao"] = DAO(settings.db_path)
+    dao = DAO(settings.db_path)
+    config["sharded_dao"] = ShardedDAO(dao, settings.port, settings.cluster_urls)
     yield
-    config["dao"].close()
+    await config["sharded_dao"].aclose()
 
 
 routes = web.RouteTableDef()
@@ -106,23 +137,23 @@ class EntityQuery(pydantic.BaseModel):
 class EntityView(web.View):
     async def get(self) -> web.Response:
         try:
-            _, value = next(self.dao.range(self.get_query().id, None))
-        except StopIteration:
+            value = await self.sharded_dao.get(self.get_query().id)
+        except KeyError:
             raise not_found()
         return web.Response(body=value)
 
     async def put(self) -> web.Response:
         body = await self.request.read()
-        self.dao.upsert(self.get_query().id, body)
+        await self.sharded_dao.upsert(self.get_query().id, body)
         return web.Response(status=201, text="Created")
 
     async def delete(self) -> web.Response:
-        self.dao.upsert(self.get_query().id, None)
+        await self.sharded_dao.upsert(self.get_query().id, None)
         return web.Response(status=202, text="Accepeted")
 
     @property
-    def dao(self) -> DAO:
-        return app_config(self.request.app)["dao"]
+    def sharded_dao(self) -> ShardedDAO:
+        return app_config(self.request.app)["sharded_dao"]
 
     def get_query(self) -> EntityQuery:
         return EntityQuery(**self.request.query)  # type: ignore
@@ -171,6 +202,7 @@ def update_environ_from_opts(argv: list[str]) -> None:
         "--port": "PYDHT_PORT",
         "--profile": "PYDHT_PROFILE_PATH",
         "--access-log": "PYDHT_ACCESS_LOG",
+        "--cluster-urls": "PYDHT_CLUSTER_URLS",
     }
     for k, v in mapping.items():
         if opts[k]:
