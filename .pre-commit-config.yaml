@@ -23,7 +23,11 @@ repos:
     hooks:
       - id: gradle-test
         name: gradle test
-        entry: ./gradlew --info cleanTest test --tests StartStopTest --tests SingleNodeTest
+        entry: >
+          ./gradlew --info cleanTest test
+          --tests StartStopTest
+          --tests SingleNodeTest
+          --tests ShardingTest
         language: system
         types_or:
           - python

@@ -61,6 +61,6 @@ public final class ServiceFactory {
             throw new IllegalArgumentException("Empty cluster");
         }
 
-        return new PyService(port, ((PyDAO)dao).dir);
+        return new PyService(port, ((PyDAO)dao).dir, topology);
     }
 }

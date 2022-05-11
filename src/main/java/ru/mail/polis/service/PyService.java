@@ -4,8 +4,11 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+import com.google.gson.Gson;
 
 import one.nio.http.HttpClient;
 import one.nio.http.HttpException;
@@ -16,17 +19,29 @@ public class PyService implements Service {
     private Process process;
     private final int port;
     private Path dir;
+    private Set<String> topology;
 
-    public PyService(int port, Path dir) {
+    public PyService(int port, Path dir, Set<String> topology) {
         this.port = port;
         this.dir = dir;
+        this.topology = topology;
     }
 
     @Override
     public void start() {
+        var gson = new Gson();
         try {
             var cmd = new String[] {
-                "poetry", "run", "pydht", "-p", Integer.toString(port), dir.toString()
+                "poetry",
+                "run",
+                "pydht",
+                "serve",
+                "--directory",
+                dir.toString(),
+                "--port",
+                Integer.toString(port),
+                "--cluster-urls",
+                gson.toJson(this.topology),
             };
             process = Runtime.getRuntime().exec(cmd);
         } catch (IOException e) {
