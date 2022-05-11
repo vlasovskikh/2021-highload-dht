@@ -76,9 +76,7 @@ def parse_opts(argv: list[str]) -> Settings:
     return Settings(**params)
 
 
-def main() -> None:
-    logging.basicConfig(level=logging.INFO)
-    settings = parse_opts(sys.argv[1:])
+def create_app(settings: Settings) -> web.Application:
     app = web.Application()
     app["settings"] = settings
     app.router.add_routes(routes)
@@ -87,6 +85,13 @@ def main() -> None:
     app.cleanup_ctx.append(cluster_context)
     app.cleanup_ctx.append(dao_context)
     app.middlewares.append(exceptions_middleware)
+    return app
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO)
+    settings = parse_opts(sys.argv[1:])
+    app = create_app(settings)
     if settings.access_log:
         access_logger.level = logging.INFO
         logger = access_logger

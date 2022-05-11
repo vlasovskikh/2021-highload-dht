@@ -14,30 +14,47 @@ async def cluster_context(app: web.Application) -> AsyncIterator:
     settings = Settings.from_app(app)
     if settings.cluster:
         timeout = 5.0
-        serve_ports = list(
-            range(settings.port + 1, settings.port + settings.num_shards)
+        port = settings.port
+        num_shards = settings.num_shards
+        urls = get_cluster_urls(port, num_shards)
+        settings.cluster_urls = urls
+        procs = await spawn_servers(
+            port, num_shards, urls, timeout=timeout, access_log=settings.access_log
         )
-        all_ports = [settings.port] + serve_ports
-        settings.cluster_urls = {f"http://localhost:{port}" for port in all_ports}
-        topology = json.dumps(list(settings.cluster_urls))
-        procs = []
-        for port in serve_ports:
-            cmd = ["pydht", "serve", "--port", str(port), "--cluster-urls", topology]
-            if settings.access_log:
-                cmd.append("--access-log")
-            procs.append(await asyncio.create_subprocess_exec(*cmd))
-        async with ClientSession() as session:
-            ready = await parallel_map(
-                wait_until_ready(session, port, timeout) for port in serve_ports
-            )
-            if not all(ready):
-                await parallel_map(terminate_process(proc, timeout) for proc in procs)
-                ports = [port for port, ok in zip(serve_ports, ready) if not ok]
-                raise TimeoutError(f"Servers on ports {ports} are not ready")
         yield
         await parallel_map(terminate_process(proc, timeout) for proc in procs)
     else:
         yield
+
+
+def get_cluster_urls(port: int, num_shards: int) -> set[str]:
+    all_ports = [port] + get_ports_to_serve(port, num_shards)
+    return {f"http://localhost:{port}" for port in all_ports}
+
+
+def get_ports_to_serve(port: int, num_shards: int) -> list[int]:
+    return list(range(port + 1, port + num_shards))
+
+
+async def spawn_servers(
+    port: int,
+    num_shards: int,
+    cluster_urls: set[str],
+    *,
+    timeout: float,
+    access_log: bool,
+) -> list[Process]:
+    topology = json.dumps(list(cluster_urls))
+    procs = []
+    ports = get_ports_to_serve(port, num_shards)
+    for port in ports:
+        cmd = ["pydht", "serve", "--port", str(port), "--cluster-urls", topology]
+        if access_log:
+            cmd.append("--access-log")
+        procs.append(await asyncio.create_subprocess_exec(*cmd))
+    async with ClientSession() as session:
+        await check_all_ready(session, procs, ports, timeout=timeout)
+    return procs
 
 
 async def parallel_map(aws: Iterable[Coroutine[Any, Any, T]]) -> list[T]:
@@ -56,7 +73,18 @@ async def terminate_process(process: Process, timeout: float) -> bool:
         return True
 
 
-async def wait_until_ready(session: ClientSession, port: int, timeout: float) -> bool:
+async def check_all_ready(
+    session: ClientSession, procs: list[Process], ports: list[int], *, timeout: float
+) -> None:
+    ready = await parallel_map(check_ready(session, port, timeout) for port in ports)
+    if all(ready):
+        return
+    await parallel_map(terminate_process(proc, timeout) for proc in procs)
+    not_ready = [port for port, ok in zip(ports, ready) if not ok]
+    raise TimeoutError(f"Servers on ports {not_ready} are not ready")
+
+
+async def check_ready(session: ClientSession, port: int, timeout: float) -> bool:
     spent = 0.0
     inc = 0.1
     while spent < timeout:
