@@ -9,8 +9,9 @@ service with docs at http://localhost:8000/docs by default.
 
 Options:
     -p --port=PORT          Listen at the given port. [default: 8000]
-    --profile=FILE          Profile with Pyinstrument and write output to FILE.
     --access-log            Show access log.
+    --profile=FILE          Profile with Pyinstrument and write output to FILE when the
+                            server stops.
 """
 
 import contextlib
@@ -63,7 +64,9 @@ class DAO:
 
 class Settings(pydantic.BaseSettings):
     db_path: Path
+    port: int = 8000
     profile_path: Path | None = None
+    access_log: bool = False
 
     class Config:
         env_prefix = "pydht_"
@@ -161,27 +164,37 @@ async def pyinstrument_context(app: web.Application) -> AsyncIterator:
         fd.write(p.output_html())
 
 
+def update_environ_from_opts(argv: list[str]) -> None:
+    opts = docopt.docopt(__doc__ or "", argv=argv)
+    mapping = {
+        "PATH": "PYDHT_DB_PATH",
+        "--port": "PYDHT_PORT",
+        "--profile": "PYDHT_PROFILE_PATH",
+        "--access-log": "PYDHT_ACCESS_LOG",
+    }
+    for k, v in mapping.items():
+        if opts[k]:
+            os.environ[v] = opts[k]
+
+
 def main() -> None:
-    opts = docopt.docopt(__doc__ or "", argv=sys.argv[1:])
-    os.environ["PYDHT_DB_PATH"] = opts["PATH"]
-    profile_path = opts["--profile"]
-    if profile_path:
-        os.environ["PYDHT_PROFILE_PATH"] = profile_path
+    update_environ_from_opts(sys.argv[1:])
+    settings = Settings()  # type: ignore
     app = web.Application()
-    app["settings"] = Settings()  # type: ignore
+    app["settings"] = settings
     app.router.add_routes(routes)
-    if profile_path:
+    if settings.profile_path:
         app.cleanup_ctx.append(pyinstrument_context)
     app.cleanup_ctx.append(dao_context)
     app.middlewares.append(exceptions_middleware)
-    if opts["--access-log"]:
+    if settings.access_log:
         logging.basicConfig(level=logging.INFO)
         access_logger.level = logging.INFO
         logger = access_logger
     else:
         logger = None
     uvloop.install()
-    web.run_app(app, port=opts["--port"], access_log=logger)
+    web.run_app(app, port=settings.port, access_log=logger)
 
 
 if __name__ == "__main__":
