@@ -2,7 +2,7 @@ from typing import Awaitable, Callable
 from aiohttp import web
 import pydantic
 
-from pydht.dao import ShardedDAO
+from pydht.sharded import ShardedDAO
 
 
 _Handler = Callable[[web.Request], Awaitable[web.StreamResponse]]

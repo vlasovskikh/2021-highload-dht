@@ -2,7 +2,7 @@ import os
 from typing import AsyncIterator
 from aiohttp import web
 
-from pydht.dao import dao_context
+from pydht.sharded import sharded_dao_context
 from pydht.settings import Settings
 from pydht.views import exceptions_middleware, routes
 
@@ -29,7 +29,7 @@ def create_app(settings: Settings) -> web.Application:
     app.router.add_routes(routes)
     if settings.profile_path:
         app.cleanup_ctx.append(pyinstrument_context)
-    app.cleanup_ctx.append(dao_context)
+    app.cleanup_ctx.append(sharded_dao_context)
     app.middlewares.append(exceptions_middleware)
     return app
 
