@@ -9,7 +9,7 @@ class Settings(pydantic.BaseSettings):
     port: int = 8000
     profile_path: Path | None = None
     access_log: bool = False
-    cluster_urls: set[str] = set()
+    cluster_urls: list[str] = []
     num_shards: int = 2
 
     @staticmethod

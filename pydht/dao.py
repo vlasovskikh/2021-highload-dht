@@ -64,7 +64,7 @@ class DAO:
 
 
 class ShardedDAO:
-    def __init__(self, path: Path | None, port: int, cluster_urls: set[str]) -> None:
+    def __init__(self, path: Path | None, port: int, cluster_urls: list[str]) -> None:
         self.cluster_urls = cluster_urls
         self.url = next(
             (url for url in cluster_urls if self.is_our_url(url, port)), None
