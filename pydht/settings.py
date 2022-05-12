@@ -3,7 +3,7 @@ from aiohttp import web
 import pydantic
 
 
-class Settings(pydantic.BaseModel):
+class Settings(pydantic.BaseSettings):
     cluster: bool = False
     db_path: Path | None = None
     port: int = 8000
@@ -15,3 +15,6 @@ class Settings(pydantic.BaseModel):
     @staticmethod
     def from_app(app: web.Application) -> "Settings":
         return app["settings"]
+
+    class Config:
+        env_prefix = "pydht_"

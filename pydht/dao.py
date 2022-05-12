@@ -70,7 +70,7 @@ class ShardedDAO:
             (url for url in cluster_urls if self.is_our_url(url, port)), None
         )
         if cluster_urls and not self.url:
-            raise ValueError(
+            logger.info(
                 f"Cannot find our host URL for port {port} among {cluster_urls}"
             )
         self.dao = DAO(path)
