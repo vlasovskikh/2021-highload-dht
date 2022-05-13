@@ -1,10 +1,12 @@
+from datetime import datetime
 import hashlib
 from pathlib import Path
 from typing import AsyncIterator
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 from aiohttp import web, DummyCookieJar, ClientSession
+from pydht.client import EntityClient
 
-from pydht.dao import DAO, logger
+from pydht.dao import DAO, Record, logger
 from pydht.settings import Settings
 
 
@@ -21,28 +23,30 @@ class ReplicatedStorage:
         self.dao = DAO(path)
         self.session = ClientSession(cookie_jar=DummyCookieJar())
 
-    async def get(self, key: bytes, ack: int = 1, from_: int = 1) -> bytes:
+    async def get(
+        self, key: bytes, *, ack: int | None = None, from_: int | None = None
+    ) -> Record:
         if shard_url := self.rendezvous_hash_url(key):
-            url = urljoin(shard_url, f"/v0/entity?id={key.decode()}")
-            async with self.session.get(url) as response:
-                if response.status == 404:
-                    raise KeyError("Key {key!r} is not found")
-                response.raise_for_status()
-                return await response.read()
+            client = EntityClient(shard_url, self.session)
+            return await client.get(key, ack=ack, from_=from_)
         else:
             return await self.dao.get(key)
 
     async def upsert(
-        self, key: bytes, value: bytes | None, ack: int = 1, from_: int = 1
+        self,
+        key: bytes,
+        value: bytes | None,
+        *,
+        ack: int | None = None,
+        from_: int | None = None,
+        timestamp: datetime | None,
     ) -> None:
         if shard_url := self.rendezvous_hash_url(key):
-            url = urljoin(shard_url, f"/v0/entity?id={key.decode()}")
+            client = EntityClient(shard_url, self.session)
             if value is not None:
-                async with self.session.put(url, data=value) as response:
-                    response.raise_for_status()
+                await client.put(key, value, ack=ack, from_=from_, timestamp=timestamp)
             else:
-                async with self.session.delete(url) as response:
-                    response.raise_for_status()
+                await client.delete(key, ack=ack, from_=from_, timestamp=timestamp)
         else:
             await self.dao.upsert(key, value)
 

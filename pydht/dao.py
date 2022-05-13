@@ -1,4 +1,6 @@
 import contextlib
+from dataclasses import dataclass
+from datetime import datetime
 import logging
 from pathlib import Path
 import shutil
@@ -13,6 +15,12 @@ from pydht.settings import Settings
 logger = logging.getLogger("pydht.dao")
 
 
+@dataclass
+class Record:
+    value: bytes | None
+    timestamp: datetime
+
+
 class DAO:
     def __init__(self, path: Path | None) -> None:
         if path:
@@ -24,9 +32,10 @@ class DAO:
             p = Path(tempfile.mkdtemp(prefix="pydht"))
             self.tempdir = p
             logger.info(f"Serving data from a temporary path {p}")
-        self.db = gdbm.open(str(p / "pydht.db"), "c")
+        self.values = gdbm.open(str(p / "values.db"), "c")
+        self.timestamps = gdbm.open(str(p / "timestamps.db"), "c")
 
-    async def get(self, key: bytes) -> bytes:
+    async def get(self, key: bytes) -> Record:
         try:
             _, value = await anext(self.range(key, None))
         except StopAsyncIteration:
@@ -35,28 +44,32 @@ class DAO:
 
     async def range(
         self, from_key: bytes, to_key: bytes | None
-    ) -> AsyncIterator[tuple[bytes, bytes]]:
+    ) -> AsyncIterator[tuple[bytes, Record]]:
         key: bytes | None = from_key
         while key is not None and key != to_key:
             try:
-                yield key, self.db[key]
+                timestamp = datetime.fromisoformat(self.timestamps[key].decode())
+                yield key, Record(self.values.get(key), timestamp)
             except KeyError:
                 return
-            key = self.db.nextkey(key)
+            key = self.timestamps.nextkey(key)
 
     async def upsert(self, key: bytes, value: bytes | None) -> None:
         if value is not None:
-            self.db[key] = value
+            self.values[key] = value
         else:
             with contextlib.suppress(KeyError):
-                del self.db[key]
+                del self.values[key]
+        self.timestamps[key] = datetime.utcnow().isoformat().encode()
 
     async def close_and_compact(self) -> None:
-        self.db.reorganize()
+        self.timestamps.reorganize()
+        self.values.reorganize()
         await self.aclose()
 
     async def aclose(self) -> None:
-        self.db.close()
+        self.timestamps.close()
+        self.values.close()
         if self.tempdir:
             shutil.rmtree(self.tempdir)
 

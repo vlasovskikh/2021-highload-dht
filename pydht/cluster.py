@@ -7,8 +7,9 @@ import multiprocessing
 import os
 from pathlib import Path
 from typing import Any, AsyncIterator, Coroutine, Iterable, TypeVar
-from aiohttp import ClientSession, ClientConnectionError
+from aiohttp import ClientSession
 from asyncio.exceptions import TimeoutError
+from pydht.client import ReadyClient
 
 from pydht.settings import Settings
 
@@ -160,16 +161,9 @@ async def check_ready(
             pass
         else:
             return False
-        if await is_ready(port, session=session):
+        client = ReadyClient(f"http://localhost:{port}", session)
+        if await client.get():
             return True
         await asyncio.sleep(inc)
         spent += inc
     return False
-
-
-async def is_ready(port: int, *, session: ClientSession) -> bool:
-    try:
-        async with session.get(f"http://localhost:{port}/v0/status") as response:
-            return response.status // 100 == 2
-    except ClientConnectionError:
-        return False

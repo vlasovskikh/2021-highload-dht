@@ -1,7 +1,7 @@
-import re
 from typing import Awaitable, Callable
 from aiohttp import web
 import pydantic
+from pydht.client import X_LAST_MODIFIED, EntityHeaders, EntityQuery
 
 from pydht.replicated import ReplicatedStorage
 
@@ -18,56 +18,52 @@ class StatusView(web.View):
         return web.Response(text="I'm OK")
 
 
-class EntityQuery(pydantic.BaseModel):
-    id: bytes = pydantic.Field(min_length=1)
-    replicas: tuple[int, int] | None
-
-    @pydantic.validator("replicas", pre=True)
-    def check_replicas(cls, value: str | None) -> tuple[int, int] | None:
-        if value is None:
-            return None
-        m = re.match(r"(\d+)/(\d+)", value)
-        if not m:
-            raise ValueError(f"{value!r} does not follow ACK/FROM syntax")
-        ack_s, from_s = m.groups()
-        ack, from_ = int(ack_s), int(from_s)
-        if from_ <= 0 or ack <= 0:
-            raise ValueError(f"Both ACK and FROM in {value!r} should be positive")
-        elif ack > from_:
-            raise ValueError(f"ACK in {value!r} should be not greater than FROM")
-        return ack, from_
-
-    def replicas_args(self) -> tuple:
-        return self.replicas or ()
-
-
 @routes.view("/v0/entity")
 class EntityView(web.View):
     async def get(self) -> web.Response:
-        q = self.parse_query()
+        q = self.get_query()
+        ack, from_ = q.replicas_pair
         try:
-            value = await self.storage.get(q.id, *q.replicas_args())
+            record = await self.storage.get(q.id, ack=ack, from_=from_)
         except KeyError:
             raise not_found()
-        return web.Response(body=value)
+        if record.value is None:
+            raise not_found()
+        return web.Response(
+            body=record.value,
+            headers={
+                X_LAST_MODIFIED: record.timestamp.isoformat(),
+            },
+        )
 
     async def put(self) -> web.Response:
-        q = self.parse_query()
+        q = self.get_query()
+        headers = self.get_headers()
         body = await self.request.read()
-        await self.storage.upsert(q.id, body, *q.replicas_args())
+        ack, from_ = q.replicas_pair
+        await self.storage.upsert(
+            q.id, body, ack=ack, from_=from_, timestamp=headers.x_last_modified
+        )
         return web.Response(status=201, text="Created")
 
     async def delete(self) -> web.Response:
-        q = self.parse_query()
-        await self.storage.upsert(q.id, None, *q.replicas_args())
+        q = self.get_query()
+        headers = self.get_headers()
+        ack, from_ = q.replicas_pair
+        await self.storage.upsert(
+            q.id, None, ack=ack, from_=from_, timestamp=headers.x_last_modified
+        )
         return web.Response(status=202, text="Accepeted")
 
     @property
     def storage(self) -> ReplicatedStorage:
         return ReplicatedStorage.from_app(self.request.app)
 
-    def parse_query(self) -> EntityQuery:
-        return EntityQuery(**self.request.query)  # type: ignore
+    def get_query(self) -> EntityQuery:
+        return EntityQuery.from_request(self.request)
+
+    def get_headers(self) -> EntityHeaders:
+        return EntityHeaders.from_request(self.request)
 
 
 @web.middleware
