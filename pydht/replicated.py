@@ -42,6 +42,8 @@ class ReplicatedStorage:
         timestamp: datetime | None,
     ) -> None:
         if shard_url := self.rendezvous_hash_url(key):
+            if not timestamp:
+                timestamp = datetime.utcnow()
             client = EntityClient(shard_url, self.session)
             if value is not None:
                 await client.put(key, value, ack=ack, from_=from_, timestamp=timestamp)

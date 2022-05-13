@@ -52,14 +52,11 @@ class EntityClient:
         from_: int | None = None,
         timestamp: datetime | None = None,
     ) -> None:
-        if not timestamp:
-            timestamp = datetime.utcnow()
+        headers = {}
+        if timestamp:
+            headers[X_LAST_MODIFIED] = timestamp.isoformat()
         async with self.session.put(
-            self.url_for(key, ack, from_),
-            data=value,
-            headers={
-                X_LAST_MODIFIED: timestamp.isoformat(),
-            },
+            self.url_for(key, ack, from_), data=value, headers=headers
         ) as response:
             response.raise_for_status()
 
@@ -71,13 +68,11 @@ class EntityClient:
         from_: int | None = None,
         timestamp: datetime | None = None,
     ) -> None:
-        if not timestamp:
-            timestamp = datetime.utcnow()
+        headers = {}
+        if timestamp:
+            headers[X_LAST_MODIFIED] = timestamp.isoformat()
         async with self.session.delete(
-            self.url_for(key, ack, from_),
-            headers={
-                X_LAST_MODIFIED: timestamp.isoformat(),
-            },
+            self.url_for(key, ack, from_), headers=headers
         ) as response:
             response.raise_for_status()
 
