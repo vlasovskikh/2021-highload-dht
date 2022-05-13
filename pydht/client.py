@@ -92,9 +92,7 @@ class EntityQuery(pydantic.BaseModel):
     replicas: tuple[int, int] | None
 
     @pydantic.validator("replicas", pre=True)
-    def check_replicas(cls, value: str | None) -> tuple[int, int] | None:
-        if value is None:
-            return None
+    def check_replicas(cls, value: str) -> tuple[int, int]:
         m = re.match(r"(\d+)/(\d+)", value)
         if not m:
             raise ValueError(f"{value!r} does not follow ACK/FROM syntax")
@@ -111,8 +109,8 @@ class EntityQuery(pydantic.BaseModel):
         return EntityQuery(**request.query)  # type: ignore
 
     @property
-    def replicas_pair(self) -> tuple[int, int] | tuple[None, None]:
-        return self.replicas or (None, None)
+    def replicas_pair(self) -> tuple[int, int]:
+        return self.replicas or (1, 1)
 
 
 class EntityHeaders(pydantic.BaseModel):

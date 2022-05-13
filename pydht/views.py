@@ -3,10 +3,7 @@ from aiohttp import web
 import pydantic
 from pydht.client import X_LAST_MODIFIED, EntityHeaders, EntityQuery
 
-from pydht.replicated import ReplicatedStorage
-
-
-_Handler = Callable[[web.Request], Awaitable[web.StreamResponse]]
+from pydht.replicated import NotEnoughReplicasError, ReplicatedStorage
 
 
 routes = web.RouteTableDef()
@@ -27,6 +24,8 @@ class EntityView(web.View):
             record = await self.storage.get(q.id, ack=ack, from_=from_)
         except KeyError:
             raise not_found()
+        except NotEnoughReplicasError as e:
+            raise web.HTTPGatewayTimeout(text=str(e))
         if record.value is None:
             raise not_found()
         return web.Response(
@@ -41,18 +40,24 @@ class EntityView(web.View):
         headers = self.get_headers()
         body = await self.request.read()
         ack, from_ = q.replicas_pair
-        await self.storage.upsert(
-            q.id, body, ack=ack, from_=from_, timestamp=headers.x_last_modified
-        )
+        try:
+            await self.storage.upsert(
+                q.id, body, ack=ack, from_=from_, timestamp=headers.x_last_modified
+            )
+        except NotEnoughReplicasError as e:
+            raise web.HTTPGatewayTimeout(text=str(e))
         return web.Response(status=201, text="Created")
 
     async def delete(self) -> web.Response:
         q = self.get_query()
         headers = self.get_headers()
         ack, from_ = q.replicas_pair
-        await self.storage.upsert(
-            q.id, None, ack=ack, from_=from_, timestamp=headers.x_last_modified
-        )
+        try:
+            await self.storage.upsert(
+                q.id, None, ack=ack, from_=from_, timestamp=headers.x_last_modified
+            )
+        except NotEnoughReplicasError as e:
+            raise web.HTTPGatewayTimeout(text=str(e))
         return web.Response(status=202, text="Accepeted")
 
     @property
@@ -64,6 +69,9 @@ class EntityView(web.View):
 
     def get_headers(self) -> EntityHeaders:
         return EntityHeaders.from_request(self.request)
+
+
+_Handler = Callable[[web.Request], Awaitable[web.StreamResponse]]
 
 
 @web.middleware
