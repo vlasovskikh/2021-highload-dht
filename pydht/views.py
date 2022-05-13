@@ -1,8 +1,9 @@
+import re
 from typing import Awaitable, Callable
 from aiohttp import web
 import pydantic
 
-from pydht.sharded import ShardedDAO
+from pydht.replicated import ReplicatedStorage
 
 
 _Handler = Callable[[web.Request], Awaitable[web.StreamResponse]]
@@ -19,31 +20,53 @@ class StatusView(web.View):
 
 class EntityQuery(pydantic.BaseModel):
     id: bytes = pydantic.Field(min_length=1)
+    replicas: tuple[int, int] | None
+
+    @pydantic.validator("replicas", pre=True)
+    def check_replicas(cls, value: str | None) -> tuple[int, int] | None:
+        if value is None:
+            return None
+        m = re.match(r"(\d+)/(\d+)", value)
+        if not m:
+            raise ValueError(f"{value!r} does not follow ACK/FROM syntax")
+        ack_s, from_s = m.groups()
+        ack, from_ = int(ack_s), int(from_s)
+        if from_ <= 0 or ack <= 0:
+            raise ValueError(f"Both ACK and FROM in {value!r} should be positive")
+        elif ack > from_:
+            raise ValueError(f"ACK in {value!r} should be not greater than FROM")
+        return ack, from_
+
+    def replicas_args(self) -> tuple:
+        return self.replicas or ()
 
 
 @routes.view("/v0/entity")
 class EntityView(web.View):
     async def get(self) -> web.Response:
+        q = self.parse_query()
         try:
-            value = await self.sharded_dao.get(self.get_query().id)
+            value = await self.storage.get(q.id, *q.replicas_args())
         except KeyError:
             raise not_found()
         return web.Response(body=value)
 
     async def put(self) -> web.Response:
+        q = self.parse_query()
         body = await self.request.read()
-        await self.sharded_dao.upsert(self.get_query().id, body)
+        await self.storage.upsert(q.id, body, *q.replicas_args())
         return web.Response(status=201, text="Created")
 
     async def delete(self) -> web.Response:
-        await self.sharded_dao.upsert(self.get_query().id, None)
+        q = self.parse_query()
+        await self.storage.upsert(q.id, None, *q.replicas_args())
         return web.Response(status=202, text="Accepeted")
 
     @property
-    def sharded_dao(self) -> ShardedDAO:
-        return ShardedDAO.from_app(self.request.app)
+    def storage(self) -> ReplicatedStorage:
+        return ReplicatedStorage.from_app(self.request.app)
 
-    def get_query(self) -> EntityQuery:
+    def parse_query(self) -> EntityQuery:
         return EntityQuery(**self.request.query)  # type: ignore
 
 
