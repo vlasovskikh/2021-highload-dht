@@ -20,21 +20,22 @@ class StatusView(web.View):
 class EntityView(web.View):
     async def get(self) -> web.Response:
         q = self.get_query()
+        req_headers = self.get_headers()
         ack, from_ = q.replicas_pair
         try:
-            record = await self.storage.get(q.id, ack=ack, from_=from_)
+            record = await self.storage.get(
+                q.id, ack=ack, from_=from_, replicated=req_headers.x_replicated
+            )
         except KeyError:
             raise not_found()
         except NotEnoughReplicasError as e:
             raise web.HTTPGatewayTimeout(text=str(e))
+        resp_headers = {
+            X_LAST_MODIFIED: record.timestamp.isoformat(),
+        }
         if record.value is None:
-            raise not_found()
-        return web.Response(
-            body=record.value,
-            headers={
-                X_LAST_MODIFIED: record.timestamp.isoformat(),
-            },
-        )
+            raise not_found(headers=resp_headers)
+        return web.Response(body=record.value, headers=resp_headers)
 
     async def put(self) -> web.Response:
         q = self.get_query()
@@ -43,7 +44,12 @@ class EntityView(web.View):
         ack, from_ = q.replicas_pair
         try:
             await self.storage.upsert(
-                q.id, body, ack=ack, from_=from_, timestamp=headers.x_last_modified
+                q.id,
+                body,
+                ack=ack,
+                from_=from_,
+                timestamp=headers.x_last_modified,
+                replicated=headers.x_replicated,
             )
         except NotEnoughReplicasError as e:
             raise web.HTTPGatewayTimeout(text=str(e))
@@ -55,7 +61,12 @@ class EntityView(web.View):
         ack, from_ = q.replicas_pair
         try:
             await self.storage.upsert(
-                q.id, None, ack=ack, from_=from_, timestamp=headers.x_last_modified
+                q.id,
+                None,
+                ack=ack,
+                from_=from_,
+                timestamp=headers.x_last_modified,
+                replicated=headers.x_replicated,
             )
         except NotEnoughReplicasError as e:
             raise web.HTTPGatewayTimeout(text=str(e))
@@ -91,7 +102,7 @@ async def exceptions_middleware(
             raise web.HTTPBadRequest()
 
 
-def not_found() -> web.HTTPNotFound:
-    e = web.HTTPNotFound(text="Not found")
+def not_found(*, headers: dict | None = None) -> web.HTTPNotFound:
+    e = web.HTTPNotFound(text="Not found", headers=headers)
     e["preserve"] = True
     return e

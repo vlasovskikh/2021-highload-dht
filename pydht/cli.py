@@ -2,8 +2,9 @@
 
 Usage:
     pydht serve [--port=PORT] [--directory=DIR] [--cluster-urls=URLS] [--access-log]
-                [--profile=DIR]
+                [--profile=DIR] [--debug]
     pydht cluster [--port=PORT] [--num-shards=NUM] [--access-log] [--profile=DIR]
+                  [--debug]
     pydht -h|--help
 
 Commands:
@@ -26,6 +27,7 @@ Options:
     --access-log            Show access log.
     --cluster-urls=URLS     URLs of nodes running in the cluster for sharding
                             (including this node), encoded as a JSON list.
+    --debug                 Enable debug logging.
     --profile=DIR           Profile with Pyinstrument and write output to
                             DIR/{PID}.html for every process PID when the server stops.
 
@@ -55,6 +57,7 @@ def parse_opts(argv: list[str]) -> Settings:
         "--directory": "db_path",
         "--profile": "profile_path",
         "--access-log": "access_log",
+        "--debug": "debug",
     }
     params = {v: opts[k] for k, v in mapping.items()}
     if (cluser_urls := opts["--cluster-urls"]) is not None:
@@ -63,8 +66,8 @@ def parse_opts(argv: list[str]) -> Settings:
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
     settings = parse_opts(sys.argv[1:])
+    logging.basicConfig(level=logging.DEBUG if settings.debug else logging.INFO)
     if settings.cluster:
         try:
             asyncio.run(run_cluster(settings))

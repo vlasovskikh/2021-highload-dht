@@ -42,6 +42,8 @@ public class PyService implements Service {
                 Integer.toString(port),
                 "--cluster-urls",
                 gson.toJson(this.topology),
+                "--debug",
+                "--access-log",
             };
             process = Runtime.getRuntime().exec(cmd);
         } catch (IOException e) {

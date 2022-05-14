@@ -28,6 +28,7 @@ repos:
           --tests StartStopTest
           --tests SingleNodeTest
           --tests ShardingTest
+          --tests TwoNodeTest
         language: system
         types_or:
           - python

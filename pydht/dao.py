@@ -55,13 +55,13 @@ class DAO:
                 return
             key = self.timestamps.nextkey(key)
 
-    async def upsert(self, key: bytes, value: bytes | None) -> None:
-        if value is not None:
-            self.values[key] = value
+    async def upsert(self, key: bytes, record: Record) -> None:
+        if record.value is not None:
+            self.values[key] = record.value
         else:
             with contextlib.suppress(KeyError):
                 del self.values[key]
-        self.timestamps[key] = datetime.utcnow().isoformat().encode()
+        self.timestamps[key] = record.timestamp.isoformat().encode()
 
     async def compact(self) -> None:
         self.timestamps.reorganize()

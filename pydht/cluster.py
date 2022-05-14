@@ -33,6 +33,7 @@ async def run_cluster(settings: Settings) -> None:
         timeout=timeout,
         access_log=settings.access_log,
         profile_path=settings.profile_path,
+        debug=settings.debug,
     ) as servers, spawn_balancer(
         port,
         urls,
@@ -40,6 +41,7 @@ async def run_cluster(settings: Settings) -> None:
         workers=workers,
         timeout=timeout,
         profile_path=settings.profile_path,
+        debug=settings.debug,
     ) as balancer:
         procs = [balancer] + servers
         await asyncio.gather(*[proc.wait() for proc in procs])
@@ -54,6 +56,7 @@ async def spawn_balancer(
     workers: int,
     timeout: float,
     profile_path: Path | None,
+    debug: bool,
 ) -> AsyncIterator[Process]:
     cmd = [
         "gunicorn",
@@ -69,6 +72,8 @@ async def spawn_balancer(
     env["PYDHT_CLUSTER_URLS"] = json.dumps(cluster_urls)
     if profile_path:
         env["PYDHT_PROFILE_PATH"] = str(profile_path)
+    if debug:
+        env["PYDHT_DEBUG"] = "1"
     proc = await asyncio.create_subprocess_exec(*cmd, env=env)
     try:
         if not await check_ready(proc, port, session=session, timeout=timeout):
@@ -97,6 +102,7 @@ async def spawn_servers(
     timeout: float,
     access_log: bool,
     profile_path: Path | None,
+    debug: bool,
 ) -> AsyncIterator[list[Process]]:
     ports = get_ports_to_serve(port, num_shards)
     procs: dict[int, Process] = {}
@@ -113,6 +119,8 @@ async def spawn_servers(
             cmd.append("--access-log")
         if profile_path:
             cmd.extend(["--profile", str(profile_path)])
+        if debug:
+            cmd.append("--debug")
         proc = await asyncio.create_subprocess_exec(*cmd)
         procs[port] = proc
         logger.info(f"Starting server with pid {proc.pid} at port {port}")
