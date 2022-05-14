@@ -4,9 +4,10 @@ import logging
 from pathlib import Path
 from typing import AsyncIterator
 from urllib.parse import urlparse
-from aiohttp import web, DummyCookieJar, ClientSession, ClientError
-from pydht.client import EntityClient
 
+from aiohttp import web, DummyCookieJar, ClientSession, ClientError
+
+from pydht.client import EntityClient
 from pydht.dao import DAO, Record
 from pydht.settings import Settings
 

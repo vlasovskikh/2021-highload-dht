@@ -1,5 +1,3 @@
-import asyncio
-from asyncio.subprocess import Process
 import contextlib
 import json
 import logging
@@ -7,10 +5,13 @@ import multiprocessing
 import os
 from pathlib import Path
 from typing import Any, AsyncIterator, Coroutine, Iterable, TypeVar
-from aiohttp import ClientSession
+import asyncio
+from asyncio.subprocess import Process
 from asyncio.exceptions import TimeoutError
-from pydht.client import ReadyClient
 
+from aiohttp import ClientSession
+
+from pydht.client import ReadyClient
 from pydht.settings import Settings
 
 

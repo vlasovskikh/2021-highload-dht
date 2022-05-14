@@ -1,8 +1,9 @@
 from typing import Awaitable, Callable
+
 from aiohttp import web
 import pydantic
-from pydht.client import X_LAST_MODIFIED, EntityHeaders, EntityQuery
 
+from pydht.client import X_LAST_MODIFIED, EntityHeaders, EntityQuery
 from pydht.replicated import NotEnoughReplicasError, ReplicatedStorage
 
 
