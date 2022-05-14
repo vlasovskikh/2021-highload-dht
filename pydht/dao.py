@@ -63,10 +63,9 @@ class DAO:
                 del self.values[key]
         self.timestamps[key] = datetime.utcnow().isoformat().encode()
 
-    async def close_and_compact(self) -> None:
+    async def compact(self) -> None:
         self.timestamps.reorganize()
         self.values.reorganize()
-        await self.aclose()
 
     async def aclose(self) -> None:
         self.timestamps.close()

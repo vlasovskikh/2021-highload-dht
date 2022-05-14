@@ -76,9 +76,8 @@ class ReplicatedStorage:
                 f"Got {success} successful upserts out of {ack} required"
             )
 
-    async def close_and_compact(self) -> None:
-        await self.session.close()
-        await self.dao.close_and_compact()
+    async def compact(self) -> None:
+        await self.dao.compact()
 
     async def aclose(self) -> None:
         await self.session.close()
