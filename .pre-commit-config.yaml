@@ -16,9 +16,9 @@ repos:
       - id: mypy
         args: []
         additional_dependencies:
-          - "types-docopt==0.6.8"
           - "aiohttp==3.8.1"
           - "pydantic==1.9.0"
+          - "typer==0.4.1"
   - repo: local
     hooks:
       - id: gradle-test

@@ -1,46 +1,22 @@
 """DHT highload storage for https://github.com/polis-vk/2021-highload-dht
 
-Usage:
-    pydht serve [--port=PORT] [--directory=DIR] [--cluster-urls=URLS] [--access-log]
-                [--profile=DIR] [--debug]
-    pydht cluster [--port=PORT] [--num-shards=NUM] [--access-log] [--profile=DIR]
-                  [--debug]
-    pydht -h|--help
-
-Commands:
-    serve           Start a key-value storage server that persists data in a temporary
-                    directory and serves it via an HTTP service.
-    cluster         Start a local cluster serving sharded data from temporary
-                    directories.
-
 HTTP resources:
     GET /v0/status
 
     GET /v0/entity?id=ID
     PUT /v0/entity?id=ID BODY
     DELETE /v0/entity?id=ID
-
-Options:
-    -d --directory=DIR      Persist data in DIR instead of a temporary directory.
-    -n --num-shards=NUM     Start a local cluster with NUM shards. [default: 2]
-    -p --port=PORT          Listen at the given port. [default: 8000]
-    --access-log            Show access log.
-    --cluster-urls=URLS     URLs of nodes running in the cluster for sharding
-                            (including this node), encoded as a JSON list.
-    --debug                 Enable debug logging.
-    --profile=DIR           Profile with Pyinstrument and write output to
-                            DIR/{PID}.html for every process PID when the server stops.
-
 """
 
 import asyncio
 import json
 import logging
-import sys
+from pathlib import Path
+from typing import Optional
 
 from aiohttp import web
 from aiohttp.log import access_logger
-import docopt
+import typer
 import uvloop
 
 from pydht.app import create_app
@@ -48,40 +24,96 @@ from pydht.settings import Settings
 from pydht.cluster import run_cluster
 
 
-def parse_opts(argv: list[str]) -> Settings:
-    opts = docopt.docopt(__doc__ or "", argv=argv)
-    mapping = {
-        "cluster": "cluster",
-        "--num-shards": "num_shards",
-        "--port": "port",
-        "--directory": "db_path",
-        "--profile": "profile_path",
-        "--access-log": "access_log",
-        "--debug": "debug",
-    }
-    params = {v: opts[k] for k, v in mapping.items()}
-    if (cluser_urls := opts["--cluster-urls"]) is not None:
-        params["cluster_urls"] = json.loads(cluser_urls)
-    return Settings(**params)
+cli_app = typer.Typer(add_completion=False)
+
+
+class CommonOpts:
+    port: int = typer.Option(8000, "-p", "--port", help="Listen at the given port.")
+    access_log: bool = typer.Option(False, help="Show access log.")
+    profile_path: Optional[Path] = typer.Option(
+        None,
+        "--profile",
+        help="Profile with Pyinstrument and write output to PATH/{PID}.html for every "
+        "process PID when the server stops.",
+    )
+    debug: bool = typer.Option(False, help="Enable debug logging.")
+
+
+@cli_app.command()
+def serve(
+    db_path: Optional[Path] = typer.Option(
+        None,
+        "-d",
+        "--directory",
+        help="Persist data in DIR instead of a temporary directory.",
+    ),
+    cluster_urls: Optional[str] = typer.Option(
+        None,
+        help="URLs of nodes running in the cluster for sharding (including this node), "
+        "encoded as a JSON list.",
+    ),
+    port: int = CommonOpts.port,
+    access_log: bool = CommonOpts.access_log,
+    profile_path: Optional[Path] = CommonOpts.profile_path,
+    debug: bool = CommonOpts.debug,
+) -> None:
+    """Start a key-value storage server that persists data in a temporary directory and
+    serves it via an HTTP service.
+    """
+    urls = None if cluster_urls is None else json.loads(cluster_urls)
+    settings = Settings(
+        db_path=db_path,
+        cluster_urls=urls,
+        port=port,
+        access_log=access_log,
+        profile_path=profile_path,
+        debug=debug,
+    )
+    setup_logging(settings)
+    app = create_app(settings)
+    if settings.access_log:
+        access_logger.level = logging.INFO
+        logger = access_logger
+    else:
+        logger = None
+    uvloop.install()
+    web.run_app(app, port=settings.port, access_log=logger)
+
+
+@cli_app.command()
+def cluster(
+    num_shards: int = typer.Option(
+        2,
+        "-n",
+        "--num-shards",
+        min=1,
+        help="Start a local cluster with NUM shards.",
+    ),
+    port: int = CommonOpts.port,
+    access_log: bool = CommonOpts.access_log,
+    profile_path: Optional[Path] = CommonOpts.profile_path,
+    debug: bool = CommonOpts.debug,
+) -> None:
+    """Start a local cluster serving sharded data from temporary directories."""
+    settings = Settings(
+        num_shards=num_shards,
+        port=port,
+        access_log=access_log,
+        profile_path=profile_path,
+        debug=debug,
+    )
+    try:
+        asyncio.run(run_cluster(settings))
+    except KeyboardInterrupt:
+        print("Interrupted")
+
+
+def setup_logging(settings: Settings) -> None:
+    logging.basicConfig(level=logging.DEBUG if settings.debug else logging.INFO)
 
 
 def main() -> None:
-    settings = parse_opts(sys.argv[1:])
-    logging.basicConfig(level=logging.DEBUG if settings.debug else logging.INFO)
-    if settings.cluster:
-        try:
-            asyncio.run(run_cluster(settings))
-        except KeyboardInterrupt:
-            print("Interrupted")
-    else:
-        app = create_app(settings)
-        if settings.access_log:
-            access_logger.level = logging.INFO
-            logger = access_logger
-        else:
-            logger = None
-        uvloop.install()
-        web.run_app(app, port=settings.port, access_log=logger)
+    cli_app()
 
 
 if __name__ == "__main__":
