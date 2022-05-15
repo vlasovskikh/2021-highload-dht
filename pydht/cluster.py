@@ -15,7 +15,6 @@ from pydht.client import ReadyClient
 from pydht.settings import Settings
 
 
-T = TypeVar("T")
 logger = logging.getLogger("pydht.cluser")
 
 
@@ -137,6 +136,9 @@ async def spawn_servers(
         await in_parallel(
             terminate_process(proc, timeout=timeout) for proc in procs.values()
         )
+
+
+T = TypeVar("T")
 
 
 async def in_parallel(coroutines: Iterable[Coroutine[Any, Any, T]]) -> list[T]:

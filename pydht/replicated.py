@@ -21,7 +21,7 @@ class ReplicatedStorage:
     def __init__(self, path: Path | None, port: int, cluster_urls: list[str]) -> None:
         self.cluster_urls = cluster_urls
         self.url = next(
-            (url for url in cluster_urls if self.is_our_url(url, port)), None
+            (url for url in cluster_urls if self._is_our_url(url, port)), None
         )
         self.dao = DAO(path)
         self.session = ClientSession(cookie_jar=DummyCookieJar())
@@ -35,13 +35,9 @@ class ReplicatedStorage:
         from_: int = 1,
         replicated: bool = False,
     ) -> Record:
-        self.check_replicas_ranges(ack, from_)
-        urls: list[str | None]
-        if replicated:
-            urls = [None]
-        else:
-            urls = self.rendezvous_urls(key, from_)
-        tasks = [asyncio.create_task(self.get_url(url, key)) for url in urls]
+        self._check_replicas_ranges(ack, from_)
+        urls = self._rendezvous_urls(key, from_, replicated=replicated)
+        tasks = [asyncio.create_task(self._get_url(url, key)) for url in urls]
         self.watcher.watch(tasks)
         replies: list[Record | None] = []
         for task in asyncio.as_completed(tasks):
@@ -76,20 +72,16 @@ class ReplicatedStorage:
         timestamp: datetime | None,
         replicated: bool = False,
     ) -> None:
-        self.check_replicas_ranges(ack, from_)
+        self._check_replicas_ranges(ack, from_)
         if not timestamp:
             timestamp = datetime.utcnow()
-        urls: list[str | None]
-        if replicated:
-            urls = [None]
-        else:
-            urls = self.rendezvous_urls(key, from_)
-        success = 0
+        urls = self._rendezvous_urls(key, from_, replicated=replicated)
         tasks = [
-            asyncio.create_task(self.upsert_url(url, key, value, timestamp=timestamp))
+            asyncio.create_task(self._upsert_url(url, key, value, timestamp=timestamp))
             for url in urls
         ]
         self.watcher.watch(tasks)
+        success = 0
         for task in asyncio.as_completed(tasks):
             try:
                 await task
@@ -115,27 +107,26 @@ class ReplicatedStorage:
     def from_app(app: web.Application) -> "ReplicatedStorage":
         return app["storage"]
 
-    async def get_url(self, url: str | None, key: bytes) -> Record:
+    async def _get_url(self, url: str | None, key: bytes) -> Record:
         if url is not None:
             client = EntityClient(url, self.session)
             return await client.get(key, replicated=True)
         else:
             return await self.dao.get(key)
 
-    async def upsert_url(
+    async def _upsert_url(
         self, url: str | None, key: bytes, value: bytes | None, *, timestamp: datetime
     ) -> None:
         if url is not None:
             client = EntityClient(url, self.session)
-            if value is not None:
-                await client.put(key, value, timestamp=timestamp, replicated=True)
-            else:
-                await client.delete(key, timestamp=timestamp, replicated=True)
+            await client.upsert(key, value, timestamp=timestamp, replicated=True)
         else:
             await self.dao.upsert(key, Record(value, timestamp))
 
-    def rendezvous_urls(self, key: bytes, from_: int) -> list[str | None]:
-        if not self.cluster_urls:
+    def _rendezvous_urls(
+        self, key: bytes, from_: int, *, replicated: bool
+    ) -> list[str | None]:
+        if replicated or not self.cluster_urls:
             return [None]
         ordered = sorted(
             self.cluster_urls,
@@ -143,7 +134,7 @@ class ReplicatedStorage:
         )
         return [url if url != self.url else None for url in ordered][:from_]
 
-    def check_replicas_ranges(self, ack: int, from_: int) -> None:
+    def _check_replicas_ranges(self, ack: int, from_: int) -> None:
         size = len(self.cluster_urls)
         if from_ < 1 or from_ > size:
             raise ValueError(f"FROM should be between 1 and {size}")
@@ -151,7 +142,7 @@ class ReplicatedStorage:
             raise ValueError(f"ACK should be between 1 and {from_}")
 
     @staticmethod
-    def is_our_url(url: str, port: int) -> bool:
+    def _is_our_url(url: str, port: int) -> bool:
         parsed = urlparse(url)
         return parsed.port == port and parsed.hostname in ["localhost", "127.0.0.1"]
 
@@ -159,18 +150,10 @@ class ReplicatedStorage:
 class TasksWatcher:
     def __init__(self) -> None:
         self.tasks: set[asyncio.Task] = set()
-        self.runner = asyncio.create_task(self.run())
+        self.runner = asyncio.create_task(self._run())
 
     def watch(self, tasks: Iterable[asyncio.Task]) -> None:
         self.tasks |= set(tasks)
-
-    async def run(self) -> None:
-        while True:
-            if self.tasks:
-                done, _ = await asyncio.wait(self.tasks)
-                self.tasks -= done
-            else:
-                await asyncio.sleep(1.0)
 
     async def aclose(self) -> None:
         self.runner.cancel()
@@ -184,6 +167,14 @@ class TasksWatcher:
                 logger.exception(
                     "Exception occurred in background task", exc_info=result
                 )
+
+    async def _run(self) -> None:
+        while True:
+            if self.tasks:
+                done, _ = await asyncio.wait(self.tasks)
+                self.tasks -= done
+            else:
+                await asyncio.sleep(1.0)
 
 
 async def replicated_storage_context(app: web.Application) -> AsyncIterator:

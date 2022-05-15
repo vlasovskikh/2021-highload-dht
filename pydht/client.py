@@ -4,7 +4,7 @@ import re
 from urllib.parse import urlencode, urljoin
 
 import pydantic
-from aiohttp import web, ClientSession, ClientResponse, ClientConnectionError
+from aiohttp import web, ClientSession, ClientResponse, ClientConnectionError, hdrs
 
 from pydht.dao import Record
 
@@ -43,9 +43,9 @@ class EntityClient:
         if replicated:
             req_headers[X_REPLICATED] = "yes"
         async with self.session.get(
-            self.url_for(key, ack, from_), headers=req_headers
+            self._url_for(key, ack, from_), headers=req_headers
         ) as response:
-            self._debug_log_response(response)
+            self._log_response(response)
             resp_headers = EntityHeaders.from_response(response)
             timestamp = resp_headers.x_last_modified
             if response.status == 404:
@@ -54,12 +54,12 @@ class EntityClient:
                 else:
                     raise KeyError("Key {key!r} is not found")
             response.raise_for_status()
-            return Record(await response.read(), self.effective_timestamp(timestamp))
+            return Record(await response.read(), self._effective_timestamp(timestamp))
 
-    async def put(
+    async def upsert(
         self,
         key: bytes,
-        value: bytes,
+        value: bytes | None,
         *,
         ack: int | None = None,
         from_: int | None = None,
@@ -71,43 +71,25 @@ class EntityClient:
             headers[X_LAST_MODIFIED] = timestamp.isoformat()
         if replicated:
             headers[X_REPLICATED] = "yes"
-        async with self.session.put(
-            self.url_for(key, ack, from_), data=value, headers=headers
+        url = self._url_for(key, ack, from_)
+        method = hdrs.METH_DELETE if value is None else hdrs.METH_PUT
+        async with self.session.request(
+            method, url, data=value, headers=headers
         ) as response:
-            self._debug_log_response(response)
+            self._log_response(response)
             response.raise_for_status()
 
-    async def delete(
-        self,
-        key: bytes,
-        *,
-        ack: int | None = None,
-        from_: int | None = None,
-        timestamp: datetime | None = None,
-        replicated: bool = False,
-    ) -> None:
-        headers = {}
-        if timestamp:
-            headers[X_LAST_MODIFIED] = timestamp.isoformat()
-        if replicated:
-            headers[X_REPLICATED] = "yes"
-        async with self.session.delete(
-            self.url_for(key, ack, from_), headers=headers
-        ) as response:
-            self._debug_log_response(response)
-            response.raise_for_status()
-
-    def url_for(self, key: bytes, ack: int | None, from_: int | None) -> str:
+    def _url_for(self, key: bytes, ack: int | None, from_: int | None) -> str:
         query = {"id": key.decode()}
         if ack is not None and from_ is not None:
             query["replicas"] = f"{ack}/{from_}"
         return urljoin(self.base_url, f"/v0/entity?{urlencode(query)}")
 
     @staticmethod
-    def effective_timestamp(timestamp: datetime | None) -> datetime:
+    def _effective_timestamp(timestamp: datetime | None) -> datetime:
         return timestamp or datetime.utcnow()
 
-    def _debug_log_response(self, response: ClientResponse) -> None:
+    def _log_response(self, response: ClientResponse) -> None:
         logger.debug(
             f"HTTP {response.method} {response.url}, "
             f"got {response.status} {response.reason}"
