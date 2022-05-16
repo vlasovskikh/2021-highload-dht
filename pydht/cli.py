@@ -102,6 +102,7 @@ def cluster(
         profile_path=profile_path,
         debug=debug,
     )
+    setup_logging(settings)
     try:
         asyncio.run(run_cluster(settings))
     except KeyboardInterrupt:
