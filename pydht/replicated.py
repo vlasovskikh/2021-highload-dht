@@ -136,9 +136,12 @@ class ReplicatedStorage:
 
     def _check_replicas_ranges(self, ack: int, from_: int) -> None:
         size = len(self.cluster_urls)
-        if from_ < 1 or from_ > size:
+        if size == 0:
+            if ack != 1 or from_ != 1:
+                raise ValueError("FROM/ACK for a single node should be 1/1")
+        elif from_ < 1 or from_ > size:
             raise ValueError(f"FROM should be between 1 and {size}")
-        if ack < 1 or ack > from_:
+        elif ack < 1 or ack > from_:
             raise ValueError(f"ACK should be between 1 and {from_}")
 
     @staticmethod

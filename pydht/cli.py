@@ -60,7 +60,7 @@ def serve(
     """Start a key-value storage server that persists data in a temporary directory and
     serves it via an HTTP service.
     """
-    urls = None if cluster_urls is None else json.loads(cluster_urls)
+    urls = [] if cluster_urls is None else json.loads(cluster_urls)
     settings = Settings(
         db_path=db_path,
         cluster_urls=urls,
