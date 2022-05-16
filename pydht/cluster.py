@@ -67,6 +67,7 @@ async def spawn_balancer(
         "pydht.app:async_create_app",
     ]
     env = os.environ.copy()
+    env["PYDHT_CLUSTER"] = "1"
     env["PYDHT_CLUSTER_URLS"] = json.dumps(cluster_urls)
     if profile_path:
         env["PYDHT_PROFILE_PATH"] = str(profile_path)

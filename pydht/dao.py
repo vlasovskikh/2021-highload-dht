@@ -28,11 +28,11 @@ class DAO:
             p = path
             path.mkdir(parents=True, exist_ok=True)
             self.tempdir = None
-            logger.info(f"Serving data from {path.absolute()}")
+            logger.debug(f"Serving data from {path.absolute()}")
         else:
             p = Path(tempfile.mkdtemp(prefix="pydht"))
             self.tempdir = p
-            logger.info(f"Serving data from a temporary path {p}")
+            logger.debug(f"Serving data from a temporary path {p}")
         self.values = gdbm.open(str(p / "values.db"), "c")
         self.timestamps = gdbm.open(str(p / "timestamps.db"), "c")
 

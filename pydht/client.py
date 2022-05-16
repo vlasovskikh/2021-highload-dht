@@ -21,6 +21,7 @@ class ReadyClient:
         url = urljoin(self.base_url, "/v0/status")
         try:
             async with self.session.get(url) as response:
+                log_response(response)
                 return response.status // 100 == 2
         except ClientConnectionError:
             return False
@@ -45,7 +46,7 @@ class EntityClient:
         async with self.session.get(
             self._url_for(key, ack, from_), headers=req_headers
         ) as response:
-            self._log_response(response)
+            log_response(response)
             resp_headers = EntityHeaders.from_response(response)
             timestamp = resp_headers.x_last_modified
             if response.status == 404:
@@ -76,7 +77,7 @@ class EntityClient:
         async with self.session.request(
             method, url, data=value, headers=headers
         ) as response:
-            self._log_response(response)
+            log_response(response)
             response.raise_for_status()
 
     def _url_for(self, key: bytes, ack: int | None, from_: int | None) -> str:
@@ -89,11 +90,12 @@ class EntityClient:
     def _effective_timestamp(timestamp: datetime | None) -> datetime:
         return timestamp or datetime.utcnow()
 
-    def _log_response(self, response: ClientResponse) -> None:
-        logger.debug(
-            f"HTTP {response.method} {response.url}, "
-            f"got {response.status} {response.reason}"
-        )
+
+def log_response(response: ClientResponse) -> None:
+    logger.debug(
+        f"HTTP {response.method} {response.url}, "
+        f"got {response.status} {response.reason}"
+    )
 
 
 class EntityQuery(pydantic.BaseModel):

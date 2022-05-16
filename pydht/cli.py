@@ -19,7 +19,7 @@ from aiohttp.log import access_logger
 import typer
 import uvloop
 
-from pydht.app import create_app
+from pydht.app import create_app, setup_logging
 from pydht.settings import Settings
 from pydht.cluster import run_cluster
 
@@ -69,7 +69,6 @@ def serve(
         profile_path=profile_path,
         debug=debug,
     )
-    setup_logging(settings)
     app = create_app(settings)
     if settings.access_log:
         access_logger.level = logging.INFO
@@ -99,6 +98,7 @@ def cluster(
 ) -> None:
     """Start a local cluster serving sharded data from temporary directories."""
     settings = Settings(
+        cluster=True,
         num_shards=num_shards,
         workers=workers,
         port=port,
@@ -111,10 +111,6 @@ def cluster(
         asyncio.run(run_cluster(settings))
     except KeyboardInterrupt:
         print("Interrupted")
-
-
-def setup_logging(settings: Settings) -> None:
-    logging.basicConfig(level=logging.DEBUG if settings.debug else logging.INFO)
 
 
 def main() -> None:

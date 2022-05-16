@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import AsyncIterator
 
@@ -25,6 +26,7 @@ async def pyinstrument_context(app: web.Application) -> AsyncIterator:
 
 
 def create_app(settings: Settings) -> web.Application:
+    setup_logging(settings)
     app = web.Application()
     app["settings"] = settings
     app.router.add_routes(routes)
@@ -37,3 +39,7 @@ def create_app(settings: Settings) -> web.Application:
 
 async def async_create_app() -> web.Application:
     return create_app(Settings())
+
+
+def setup_logging(settings: Settings) -> None:
+    logging.basicConfig(level=logging.DEBUG if settings.debug else logging.INFO)
