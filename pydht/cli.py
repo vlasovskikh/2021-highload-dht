@@ -89,6 +89,9 @@ def cluster(
         min=1,
         help="Start a local cluster with NUM shards.",
     ),
+    workers: int = typer.Option(
+        2, min=1, help="Number of gunicorn workers to handle incoming connections."
+    ),
     port: int = CommonOpts.port,
     access_log: bool = CommonOpts.access_log,
     profile_path: Optional[Path] = CommonOpts.profile_path,
@@ -97,6 +100,7 @@ def cluster(
     """Start a local cluster serving sharded data from temporary directories."""
     settings = Settings(
         num_shards=num_shards,
+        workers=workers,
         port=port,
         access_log=access_log,
         profile_path=profile_path,

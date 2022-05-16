@@ -34,3 +34,4 @@ repos:
           - python
           - java
         pass_filenames: false
+fail_fast: true

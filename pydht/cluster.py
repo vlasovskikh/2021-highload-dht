@@ -1,7 +1,6 @@
 import contextlib
 import json
 import logging
-import multiprocessing
 import os
 from pathlib import Path
 from typing import Any, AsyncIterator, Coroutine, Iterable, TypeVar
@@ -19,7 +18,7 @@ logger = logging.getLogger("pydht.cluster")
 
 
 async def run_cluster(settings: Settings) -> None:
-    workers = multiprocessing.cpu_count()
+    workers = settings.workers
     timeout = 5.0
     port = settings.port
     num_shards = settings.num_shards
