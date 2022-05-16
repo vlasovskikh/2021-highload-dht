@@ -15,7 +15,7 @@ from pydht.client import ReadyClient
 from pydht.settings import Settings
 
 
-logger = logging.getLogger("pydht.cluser")
+logger = logging.getLogger("pydht.cluster")
 
 
 async def run_cluster(settings: Settings) -> None:
