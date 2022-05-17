@@ -5,6 +5,7 @@ from typing import Iterable, AsyncIterator
 import pyinstrument
 from pyinstrument.processors import (
     aggregate_repeated_calls,
+    remove_importlib,
     ProcessorType,
     ProcessorOptions,
 )
@@ -48,6 +49,7 @@ async def pyinstrument_context(app: web.Application) -> AsyncIterator:
 class FlameGraphRenderer(Renderer):
     def default_processors(self) -> list[ProcessorType]:
         return [
+            remove_importlib,
             aggregate_repeated_calls,
             drop_self_nodes,
         ]
